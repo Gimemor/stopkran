@@ -836,18 +836,25 @@
         location.hash = "#/profile";
         return;
       }
-      const { data, error } = await client.from("requests").insert({
-        owner_id: currentUserId(),
-        title: title,
-        amount: Math.round(amount),
-        reason: reason,
-        alternative: alternative || ""
-      }).select("id").single();
-      if (error) {
-        toast("Не удалось отправить: " + error.message);
-        haptic("notify", "error");
-        return;
-      }
+      function currentUserId() {
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  if (tgUser && tgUser.id) return Number(tgUser.id);
+  return 123456789; // тестовый ID для браузера
+}
+
+const { data, error } = await client.from("requests").insert({
+  user_id: currentUserId(),
+  item_name: title,
+  amount: Math.round(amount),
+  reason: reason,
+  alternative: alternative || ""
+}).select("id").single();
+
+if (error) {
+  toast("Не удалось отправить: " + error.message);
+  haptic("notify", "error");
+  return;
+}
       if (data && data.id) diaryOf(data.id);
       saveLocal();
       haptic("notify", "success");
