@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#111111" />
   <title>Стоп-кран</title>
-  <!-- Официальный Telegram WebApp SDK. Других внешних библиотек нет. -->
+  <!-- Официальный Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Supabase JS (CDN, без сборщика) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* =========================================================
        ЦВЕТА И ТЕКСТЫ ДЛЯ НОВИЧКА
@@ -30,7 +32,6 @@
       --radius: 16px;
       --nav-h: 64px;
       --header-h: 52px;
-      /* Safe-area: Telegram проставляет --tg-safe-area-inset-* */
       --safe-top: var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px));
       --safe-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
       --safe-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
@@ -178,7 +179,7 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 12px;
-      font-size: 16px; /* 16px — чтобы iOS не зумил */
+      font-size: 16px;
       outline: none;
       font-family: inherit;
     }
@@ -244,7 +245,6 @@
       padding: 40px 16px;
     }
 
-    /* Модальные окна: голосование и follow-up после паузы */
     .overlay {
       display: none;
       position: fixed;
@@ -302,10 +302,8 @@
     </header>
 
     <main class="content" id="content">
-      <!-- 1. Лента заявок -->
       <section id="screen-feed" class="screen active"></section>
 
-      <!-- 2. Создать заявку -->
       <section id="screen-create" class="screen">
         <p class="hint">Опишите покупку честно. Другие увидят заявку анонимно и скажут, стоит ли брать.</p>
         <label for="f-title">Что купить</label>
@@ -320,10 +318,7 @@
         <button class="btn full" id="fallbackSubmit" type="button" style="margin-top:14px;display:none">Отправить на суд</button>
       </section>
 
-      <!-- 3. Моя статистика -->
       <section id="screen-stats" class="screen"></section>
-
-      <!-- 4. Профиль / Paywall -->
       <section id="screen-profile" class="screen"></section>
     </main>
 
@@ -335,7 +330,6 @@
     </nav>
   </div>
 
-  <!-- Голосование -->
   <div class="overlay" id="voteOverlay">
     <div class="sheet">
       <h2>Голос суда</h2>
@@ -352,7 +346,6 @@
     </div>
   </div>
 
-  <!-- Вопрос после 24 часов паузы -->
   <div class="overlay" id="followOverlay">
     <div class="sheet">
       <h2>Пауза закончилась</h2>
@@ -369,26 +362,29 @@
 
   <script>
     /* =========================================================
+       КЛЮЧИ SUPABASE
+       Вставьте Project URL и anon public key из Settings → API.
+       ========================================================= */
+    const SUPABASE_URL = 'https://norezitvmqcplbipzhra.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Vle_iQ8bW73sH1H3LGlikA_Gbs4CPQC';
+
+    /* =========================================================
        КОНФИГ: тексты, лимиты, имя бота
-       Подставьте своего бота и URL Mini App перед продом.
        ========================================================= */
     const CONFIG = {
-      BOT_USERNAME: "StopKranBot",          // без @ — поменяйте на своего бота
-      APP_URL: "https://YOUR_USERNAME.github.io/", // URL GitHub Pages / Netlify
+      BOT_USERNAME: "StopKranBot",
+      APP_URL: "https://YOUR_USERNAME.github.io/",
       FREE_LIMIT: 3,
-      PAUSE_MS: 24 * 60 * 60 * 1000,        // 24 часа. Для тестов поставьте 60 * 1000
-      STORAGE_KEY: "stopkran_v1",
+      PAUSE_MS: 24 * 60 * 60 * 1000, // 24 часа. Для тестов: 60 * 1000
+      STORAGE_KEY: "stopkran_local_v2", // только личные данные (дневник, таймеры, Pro)
       CURRENCY: "₽"
     };
 
     /* ---------- Telegram WebApp: безопасная обёртка ---------- */
-    // Если открыли не из Telegram (браузер), подставляем заглушку,
-    // чтобы MVP можно было отладить локально.
     (function ensureTelegram() {
       if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined) {
         return;
       }
-      const store = {};
       window.Telegram = window.Telegram || {};
       window.Telegram.WebApp = {
         initData: "",
@@ -416,15 +412,6 @@
           offClick: function (fn) { if (this._fn === fn) this._fn = null; }
         },
         BackButton: { show: function () {}, hide: function () {}, onClick: function () {} },
-        CloudStorage: {
-          setItem: function (k, v, cb) { store[k] = v; cb && cb(null, true); },
-          getItem: function (k, cb) { cb && cb(null, store[k] || ""); },
-          getItems: function (keys, cb) {
-            const out = {};
-            keys.forEach(function (k) { out[k] = store[k] || ""; });
-            cb && cb(null, out);
-          }
-        },
         showPopup: function (p, cb) { const ok = window.confirm((p.title || "") + "\n" + (p.message || "")); cb && cb(ok ? "ok" : "cancel"); },
         showAlert: function (m, cb) { window.alert(m); cb && cb(); },
         switchInlineQuery: function () { window.alert("switchInlineQuery доступен только внутри Telegram"); },
@@ -444,10 +431,9 @@
         if (kind === "impact") h.impactOccurred(style || "light");
         else if (kind === "notify") h.notificationOccurred(style || "success");
         else if (kind === "select") h.selectionChanged();
-      } catch (e) { /* старые клиенты Telegram */ }
+      } catch (e) {}
     }
 
-    /* ---------- Тема Telegram ---------- */
     function applyTheme() {
       const p = tg.themeParams || {};
       const root = document.documentElement;
@@ -472,154 +458,142 @@
       } catch (e) {}
     }
 
-    /* ---------- Хранилище: CloudStorage или localStorage ---------- */
-    const memory = { requests: [], profile: { isPro: false }, stats: { changedMind: 0, stillWanted: 0, savedAmount: 0 } };
-
-    function currentUserId() {
-      const u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
-      return String(u.id || "anon");
-    }
-
-    function demoRequests() {
-      const now = Date.now();
-      return [
-        {
-          id: "demo-1",
-          ownerId: "demo",
-          title: "Механическая клавиатура за 18 000",
-          amount: 18000,
-          reason: "Хочется RGB и «как у блогеров». Старая ещё работает.",
-          alternative: "Купить кейкапы на текущую клавиатуру за 2 000",
-          createdAt: now - 3600 * 1000,
-          votesFor: 1,
-          votesAgainst: 4,
-          comments: [{ vote: "against", text: "Это импульс. Подожди месяц.", at: now }],
-          votedBy: {},
-          pauseUntil: null,
-          followUp: null
-        },
-        {
-          id: "demo-2",
-          ownerId: "demo",
-          title: "Кроссовки, которые уже есть в другом цвете",
-          amount: 14990,
-          reason: "Скидка 20% до полуночи.",
-          alternative: "Пробежка в тех, что есть",
-          createdAt: now - 7200 * 1000,
-          votesFor: 0,
-          votesAgainst: 2,
-          comments: [],
-          votedBy: {},
-          pauseUntil: null,
-          followUp: null
-        },
-        {
-          id: "demo-3",
-          ownerId: "demo",
-          title: "Онлайн-курс «как успевать всё»",
-          amount: 7990,
-          reason: "Кажется, что жизнь наладится, если купить ещё один курс.",
-          alternative: "Закрыть 3 задачи из уже купленного курса",
-          createdAt: now - 10800 * 1000,
-          votesFor: 2,
-          votesAgainst: 3,
-          comments: [{ vote: "for", text: "Если это рабочий навык — бери.", at: now }],
-          votedBy: {},
-          pauseUntil: null,
-          followUp: null
-        }
-      ];
-    }
-
-    function loadLocal() {
-      try {
-        const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
-        if (!raw) return null;
-        return JSON.parse(raw);
-      } catch (e) { return null; }
-    }
-
-    function saveLocal(data) {
-      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(data));
-    }
-
     function insideTelegram() {
       return !!(tg.initData && String(tg.initData).length > 0);
     }
 
-    function persistToCloud(data) {
-      const json = JSON.stringify(data);
-      saveLocal(data);
-      if (!insideTelegram() || !tg.CloudStorage || !tg.CloudStorage.setItem) return;
-      // CloudStorage: значение до ~4096 байт. Режем на куски.
-      const chunkSize = 3500;
-      const chunks = [];
-      for (let i = 0; i < json.length; i += chunkSize) chunks.push(json.slice(i, i + chunkSize));
-      const meta = JSON.stringify({ n: chunks.length, updatedAt: Date.now() });
+    /* Telegram user_id — им помечаем заявки и голоса */
+    function currentUserId() {
+      const u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
+      if (u.id) return String(u.id);
+      let dev = localStorage.getItem("stopkran_dev_uid");
+      if (!dev) {
+        dev = "dev_" + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem("stopkran_dev_uid", dev);
+      }
+      return dev;
+    }
+
+    /* ---------- Supabase-клиент ---------- */
+    let db = null;
+    function hasSupabaseKeys() {
+      return !!(SUPABASE_URL && SUPABASE_KEY);
+    }
+    function getDb() {
+      if (db) return db;
+      if (!hasSupabaseKeys()) return null;
+      if (!window.supabase || !window.supabase.createClient) {
+        toast("Не загрузился supabase-js. Проверьте CDN.");
+        return null;
+      }
+      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      return db;
+    }
+
+    /* ---------- Личные данные: дневник, таймеры, Pro, статистика ---------- */
+    const memory = {
+      requests: [],
+      profile: { isPro: false },
+      stats: { changedMind: 0, stillWanted: 0, savedAmount: 0 },
+      diary: {}
+    };
+
+    function loadLocal() {
       try {
-        tg.CloudStorage.setItem(CONFIG.STORAGE_KEY + "_meta", meta, function () {
-          chunks.forEach(function (c, i) {
-            tg.CloudStorage.setItem(CONFIG.STORAGE_KEY + "_c" + i, c, function () {});
-          });
+        const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        memory.profile = data.profile || { isPro: false };
+        memory.stats = data.stats || { changedMind: 0, stillWanted: 0, savedAmount: 0 };
+        memory.diary = data.diary || {};
+      } catch (e) {}
+    }
+
+    function saveLocal() {
+      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify({
+        profile: memory.profile,
+        stats: memory.stats,
+        diary: memory.diary
+      }));
+    }
+
+    function diaryOf(id) {
+      if (!memory.diary[id]) memory.diary[id] = { pauseUntil: null, followUp: null };
+      return memory.diary[id];
+    }
+
+    /* После голосов по своей заявке запускаем 24ч паузу (лично, в localStorage). */
+    function syncPauseTimers() {
+      const me = currentUserId();
+      memory.requests.forEach(function (r) {
+        if (r.ownerId !== me) return;
+        const d = diaryOf(r.id);
+        if (d.followUp) return;
+        const total = (r.votesFor || 0) + (r.votesAgainst || 0);
+        if (total <= 0) return;
+        if (!d.pauseUntil) {
+          const first = (r.voteTimes && r.voteTimes.length)
+            ? Math.min.apply(null, r.voteTimes)
+            : Date.now();
+          d.pauseUntil = first + CONFIG.PAUSE_MS;
+        }
+      });
+      saveLocal();
+    }
+
+    /* ---------- Общая лента: SELECT requests + votes ---------- */
+    async function loadFeed() {
+      const client = getDb();
+      if (!client) {
+        memory.requests = [];
+        return { ok: false, reason: "no-keys" };
+      }
+      const reqRes = await client
+        .from("requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (reqRes.error) {
+        console.error(reqRes.error);
+        return { ok: false, reason: reqRes.error.message };
+      }
+      const voteRes = await client.from("votes").select("*");
+      if (voteRes.error) {
+        console.error(voteRes.error);
+        return { ok: false, reason: voteRes.error.message };
+      }
+      const votes = voteRes.data || [];
+      memory.requests = (reqRes.data || []).map(function (row) {
+        const mine = votes.filter(function (v) { return String(v.request_id) === String(row.id); });
+        const votedBy = {};
+        const comments = [];
+        const voteTimes = [];
+        let votesFor = 0;
+        let votesAgainst = 0;
+        mine.forEach(function (v) {
+          votedBy[String(v.user_id)] = v.side;
+          voteTimes.push(new Date(v.created_at).getTime());
+          if (v.side === "for") votesFor += 1;
+          else votesAgainst += 1;
+          if (v.comment) comments.push({ vote: v.side, text: v.comment, at: v.created_at });
         });
-      } catch (e) { /* вне Telegram CloudStorage может бросать */ }
-      // ЗДЕСЬ БУДЕТ БЭКЕНД: общая лента всех пользователей, а не только CloudStorage текущего аккаунта.
+        return {
+          id: row.id,
+          ownerId: String(row.owner_id),
+          title: row.title,
+          amount: Number(row.amount),
+          reason: row.reason,
+          alternative: row.alternative || "",
+          createdAt: new Date(row.created_at).getTime(),
+          votesFor: votesFor,
+          votesAgainst: votesAgainst,
+          comments: comments,
+          votedBy: votedBy,
+          voteTimes: voteTimes
+        };
+      });
+      syncPauseTimers();
+      return { ok: true };
     }
-
-    function loadFromCloud(cb) {
-      const local = loadLocal();
-      if (!insideTelegram() || !tg.CloudStorage || !tg.CloudStorage.getItem) {
-        cb(local);
-        return;
-      }
-      let done = false;
-      function finish(data) {
-        if (done) return;
-        done = true;
-        cb(data || local);
-      }
-      // Вне настоящего клиента callback может не прийти — не блокируем UI.
-      setTimeout(function () { finish(local); }, 700);
-      try {
-        tg.CloudStorage.getItem(CONFIG.STORAGE_KEY + "_meta", function (err, metaRaw) {
-          if (err || !metaRaw) {
-            finish(local);
-            return;
-          }
-          let meta;
-          try { meta = JSON.parse(metaRaw); } catch (e) { finish(local); return; }
-          const keys = [];
-          for (let i = 0; i < (meta.n || 0); i++) keys.push(CONFIG.STORAGE_KEY + "_c" + i);
-          if (!keys.length || !tg.CloudStorage.getItems) {
-            finish(local);
-            return;
-          }
-          tg.CloudStorage.getItems(keys, function (e2, values) {
-            if (e2 || !values) { finish(local); return; }
-            const json = keys.map(function (k) { return values[k] || ""; }).join("");
-            try { finish(JSON.parse(json)); }
-            catch (e3) { finish(local); }
-          });
-        });
-      } catch (e) {
-        finish(local);
-      }
-    }
-
-    function applyState(data) {
-      if (!data) {
-        memory.requests = demoRequests();
-        memory.profile = { isPro: false };
-        memory.stats = { changedMind: 0, stillWanted: 0, savedAmount: 0 };
-        persistToCloud(memory);
-        return;
-      }
-      memory.requests = Array.isArray(data.requests) && data.requests.length ? data.requests : demoRequests();
-      memory.profile = data.profile || { isPro: false };
-      memory.stats = data.stats || { changedMind: 0, stillWanted: 0, savedAmount: 0 };
-    }
-
-    function save() { persistToCloud(memory); }
 
     /* ---------- Утилиты ---------- */
     function esc(s) {
@@ -637,9 +611,6 @@
       clearTimeout(toast._t);
       toast._t = setTimeout(function () { el.classList.remove("show"); }, 2200);
     }
-    function uid() {
-      return "r_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-    }
     function ownCount() {
       const me = currentUserId();
       return memory.requests.filter(function (r) { return r.ownerId === me; }).length;
@@ -648,8 +619,9 @@
       return !!(req.votedBy && req.votedBy[currentUserId()]);
     }
     function remainingPause(req) {
-      if (!req.pauseUntil) return 0;
-      return Math.max(0, req.pauseUntil - Date.now());
+      const d = memory.diary[req.id];
+      if (!d || !d.pauseUntil) return 0;
+      return Math.max(0, d.pauseUntil - Date.now());
     }
     function formatLeft(ms) {
       const h = Math.floor(ms / 3600000);
@@ -658,7 +630,7 @@
       return Math.max(1, m) + " мин";
     }
 
-    /* ---------- Роутинг по хэшу ---------- */
+    /* ---------- Роутинг ---------- */
     const TITLES = {
       feed: ["Стоп-кран", "Лента анонимных заявок"],
       create: ["Новая заявка", "Отправь покупку на суд"],
@@ -679,10 +651,29 @@
       document.getElementById("screenTitle").textContent = TITLES[page][0];
       document.getElementById("screenSub").textContent = TITLES[page][1];
       updatePlanBadge();
-      if (page === "feed") renderFeed();
+      if (page === "feed") {
+        renderFeed();
+        refreshFeed();
+      }
       if (page === "stats") renderStats();
       if (page === "profile") renderProfile();
       setupMainButton(page === "create");
+    }
+
+    async function refreshFeed() {
+      const res = await loadFeed();
+      if (!res.ok && res.reason === "no-keys") {
+        document.getElementById("screen-feed").innerHTML =
+          "<div class='empty'>Укажите SUPABASE_URL и SUPABASE_KEY в index.html,<br/>затем выполните SQL в Supabase.</div>";
+        return;
+      }
+      if (!res.ok) {
+        document.getElementById("screen-feed").innerHTML =
+          "<div class='empty'>Не удалось загрузить ленту.<br/>" + esc(res.reason || "ошибка") + "</div>";
+        return;
+      }
+      renderFeed();
+      maybeAskFollowUp();
     }
 
     function updatePlanBadge() {
@@ -696,10 +687,7 @@
       }
     }
 
-    /* ---------- MainButton Telegram ---------- */
-    function onMainSubmit() {
-      submitRequest();
-    }
+    function onMainSubmit() { submitRequest(); }
     function setupMainButton(show) {
       const mb = tg.MainButton;
       const fallback = document.getElementById("fallbackSubmit");
@@ -717,7 +705,6 @@
           mb.show();
         }
         mb.onClick(onMainSubmit);
-        // В браузере MainButton нет — показываем обычную кнопку.
         if (!insideTelegram()) fallback.style.display = "block";
       } else {
         mb.hide();
@@ -726,11 +713,15 @@
       }
     }
 
-    /* ---------- Рендер экранов ---------- */
+    /* ---------- Рендер ---------- */
     function renderFeed() {
       const root = document.getElementById("screen-feed");
+      if (!hasSupabaseKeys()) {
+        root.innerHTML = "<div class='empty'>Укажите SUPABASE_URL и SUPABASE_KEY в index.html,<br/>затем выполните SQL в Supabase.</div>";
+        return;
+      }
       const me = currentUserId();
-      const list = memory.requests.slice().sort(function (a, b) { return b.createdAt - a.createdAt; });
+      const list = memory.requests;
       if (!list.length) {
         root.innerHTML = "<div class='empty'>Пока нет заявок.<br/>Создайте первую на вкладке «Заявка».</div>";
         return;
@@ -738,12 +729,13 @@
       root.innerHTML = list.map(function (r) {
         const mine = r.ownerId === me;
         const voted = hasVoted(r);
+        const d = memory.diary[r.id] || {};
         const left = remainingPause(r);
         let extra = "";
-        if (mine && r.followUp === "yes") extra = "<div class='meta'>Итог: всё ещё хотел купить.</div>";
-        if (mine && r.followUp === "no") extra = "<div class='meta'>Итог: передумал. Сэкономлено " + esc(money(r.amount)) + "</div>";
-        if (mine && r.pauseUntil && left > 0) extra = "<div class='meta'>Пауза: ещё " + esc(formatLeft(left)) + "</div>";
-        if (mine && r.pauseUntil && left === 0 && !r.followUp) extra = "<div class='meta'><b>Пора ответить: ты всё ещё хочешь это купить?</b></div>";
+        if (mine && d.followUp === "yes") extra = "<div class='meta'>Итог: всё ещё хотел купить.</div>";
+        if (mine && d.followUp === "no") extra = "<div class='meta'>Итог: передумал. Сэкономлено " + esc(money(r.amount)) + "</div>";
+        if (mine && d.pauseUntil && left > 0 && !d.followUp) extra = "<div class='meta'>Пауза: ещё " + esc(formatLeft(left)) + "</div>";
+        if (mine && d.pauseUntil && left === 0 && !d.followUp) extra = "<div class='meta'><b>Пора ответить: ты всё ещё хочешь это купить?</b></div>";
         const comments = (r.comments || []).slice(-3).map(function (c) {
           const tag = c.vote === "for" ? "за" : "против";
           return "<div class='comment'>" + esc(tag) + ": " + esc(c.text) + "</div>";
@@ -767,7 +759,6 @@
     }
 
     function renderStats() {
-      const me = currentUserId();
       const created = ownCount();
       const s = memory.stats;
       document.getElementById("screen-stats").innerHTML =
@@ -777,8 +768,7 @@
           "<div class='stat' style='grid-column:1/-1'><div class='n'>" + esc(money(s.savedAmount)) + "</div><div class='t'>Сэкономленная сумма (отклонённые покупки)</div></div>" +
           "<div class='stat'><div class='n'>" + s.stillWanted + "</div><div class='t'>Всё ещё хотел купить</div></div>" +
         "</div>" +
-        "<p class='hint'>Статистика считается по вашим заявкам после 24 часов паузы. " +
-        "Пока нет общего сервера, лента живёт в CloudStorage/localStorage этого устройства.</p>";
+        "<p class='hint'>Дневник и таймер паузы хранятся только у вас (localStorage). Лента и голоса — в общей базе Supabase.</p>";
     }
 
     function renderProfile() {
@@ -801,7 +791,7 @@
 
     function grantProLocal() {
       memory.profile.isPro = true;
-      save();
+      saveLocal();
       haptic("notify", "success");
       toast("Pro включён (локально)");
       updatePlanBadge();
@@ -829,8 +819,8 @@
       });
     }
 
-    /* ---------- Создание заявки ---------- */
-    function submitRequest() {
+    /* ---------- Создание заявки: INSERT requests ---------- */
+    async function submitRequest() {
       const title = document.getElementById("f-title").value.trim();
       const amount = Number(document.getElementById("f-amount").value);
       const reason = document.getElementById("f-reason").value.trim();
@@ -838,29 +828,28 @@
       if (title.length < 3) { toast("Напишите, что хотите купить"); haptic("notify", "error"); return; }
       if (!(amount > 0)) { toast("Укажите сумму"); haptic("notify", "error"); return; }
       if (reason.length < 3) { toast("Укажите причину"); haptic("notify", "error"); return; }
+      const client = getDb();
+      if (!client) { toast("Сначала заполните SUPABASE_URL и SUPABASE_KEY"); return; }
       if (!memory.profile.isPro && ownCount() >= CONFIG.FREE_LIMIT) {
         haptic("notify", "warning");
         toast("Лимит 3 заявки. Откройте Профиль → безлимит");
         location.hash = "#/profile";
         return;
       }
-      const req = {
-        id: uid(),
-        ownerId: currentUserId(),
+      const { data, error } = await client.from("requests").insert({
+        owner_id: currentUserId(),
         title: title,
         amount: Math.round(amount),
         reason: reason,
-        alternative: alternative,
-        createdAt: Date.now(),
-        votesFor: 0,
-        votesAgainst: 0,
-        comments: [],
-        votedBy: {},
-        pauseUntil: null,
-        followUp: null
-      };
-      memory.requests.push(req);
-      save();
+        alternative: alternative || ""
+      }).select("id").single();
+      if (error) {
+        toast("Не удалось отправить: " + error.message);
+        haptic("notify", "error");
+        return;
+      }
+      if (data && data.id) diaryOf(data.id);
+      saveLocal();
       haptic("notify", "success");
       document.getElementById("f-title").value = "";
       document.getElementById("f-amount").value = "";
@@ -870,48 +859,52 @@
       location.hash = "#/feed";
     }
 
-    /* ---------- Голосование ---------- */
+    /* ---------- Голосование: INSERT votes ---------- */
     let voteTargetId = null;
-    let pendingSide = null;
 
     function openVote(id) {
-      const req = memory.requests.find(function (r) { return r.id === id; });
+      const req = memory.requests.find(function (r) { return String(r.id) === String(id); });
       if (!req) return;
       if (hasVoted(req)) { toast("Вы уже голосовали"); return; }
       voteTargetId = id;
-      pendingSide = null;
       document.getElementById("voteTitle").textContent = req.title + " · " + money(req.amount);
       document.getElementById("voteComment").value = "";
       document.getElementById("voteOverlay").classList.add("open");
       haptic("select");
     }
 
-    function castVote(side) {
-      pendingSide = side;
+    async function castVote(side) {
       haptic("impact", "light");
       const comment = document.getElementById("voteComment").value.trim();
-      const req = memory.requests.find(function (r) { return r.id === voteTargetId; });
+      const req = memory.requests.find(function (r) { return String(r.id) === String(voteTargetId); });
       if (!req || hasVoted(req)) return;
-      req.votedBy = req.votedBy || {};
-      req.votedBy[currentUserId()] = side;
-      if (side === "for") req.votesFor += 1;
-      else req.votesAgainst += 1;
-      if (comment) {
-        req.comments = req.comments || [];
-        req.comments.push({ vote: side, text: comment, at: Date.now() });
+      const client = getDb();
+      if (!client) { toast("Сначала заполните ключи Supabase"); return; }
+      const { error } = await client.from("votes").insert({
+        request_id: req.id,
+        user_id: currentUserId(),
+        side: side,
+        comment: comment || ""
+      });
+      if (error) {
+        const dup = error.code === "23505" || /duplicate|unique/i.test(error.message || "");
+        toast(dup ? "Вы уже голосовали" : ("Ошибка голоса: " + error.message));
+        haptic("notify", "error");
+        return;
       }
-      // После первого голоса — 24 часа паузы для автора заявки.
-      if (!req.pauseUntil) req.pauseUntil = Date.now() + CONFIG.PAUSE_MS;
-      save();
+      if (req.ownerId === currentUserId()) {
+        const d = diaryOf(req.id);
+        if (!d.pauseUntil) d.pauseUntil = Date.now() + CONFIG.PAUSE_MS;
+        saveLocal();
+      }
       document.getElementById("voteOverlay").classList.remove("open");
       haptic("notify", "success");
       toast(side === "for" ? "Голос «за» учтён" : "Голос «против» учтён");
-      renderFeed();
-      maybeAskFollowUp();
+      await refreshFeed();
     }
 
     function shareRequest(id) {
-      const req = memory.requests.find(function (r) { return r.id === id; });
+      const req = memory.requests.find(function (r) { return String(r.id) === String(id); });
       if (!req) return;
       haptic("impact", "light");
       const text = "🛑 Стоп-кран: стоит ли покупать «" + req.title + "» за " + money(req.amount) + "? Причина: " + req.reason;
@@ -926,12 +919,14 @@
       else window.open(url, "_blank");
     }
 
-    /* ---------- Follow-up после паузы ---------- */
+    /* ---------- Follow-up: личный дневник в localStorage ---------- */
     let followId = null;
     function maybeAskFollowUp() {
       const me = currentUserId();
       const due = memory.requests.find(function (r) {
-        return r.ownerId === me && r.pauseUntil && Date.now() >= r.pauseUntil && !r.followUp;
+        if (r.ownerId !== me) return false;
+        const d = memory.diary[r.id];
+        return d && d.pauseUntil && Date.now() >= d.pauseUntil && !d.followUp;
       });
       if (!due) return;
       followId = due.id;
@@ -942,27 +937,27 @@
     }
 
     function answerFollowUp(stillWant) {
-      const req = memory.requests.find(function (r) { return r.id === followId; });
+      const req = memory.requests.find(function (r) { return String(r.id) === String(followId); });
       document.getElementById("followOverlay").classList.remove("open");
       if (!req) return;
+      const d = diaryOf(req.id);
       if (stillWant) {
-        req.followUp = "yes";
+        d.followUp = "yes";
         memory.stats.stillWanted += 1;
         toast("Ок. Решение за тобой — но пауза уже сработала.");
       } else {
-        req.followUp = "no";
+        d.followUp = "no";
         memory.stats.changedMind += 1;
         memory.stats.savedAmount += Number(req.amount) || 0;
         toast("Красиво. Сэкономлено " + money(req.amount));
       }
-      save();
+      saveLocal();
       haptic("notify", "success");
       renderFeed();
       if ((location.hash || "").indexOf("stats") !== -1) renderStats();
       setTimeout(maybeAskFollowUp, 400);
     }
 
-    /* ---------- События UI ---------- */
     document.getElementById("nav").addEventListener("click", function (e) {
       const btn = e.target.closest("button");
       if (!btn) return;
@@ -988,7 +983,6 @@
     document.getElementById("fallbackSubmit").onclick = submitRequest;
     window.addEventListener("hashchange", route);
 
-    /* ---------- Старт Mini App ---------- */
     function boot() {
       try { tg.ready(); } catch (e) {}
       try { tg.expand(); } catch (e) {}
@@ -997,12 +991,9 @@
         tg.onEvent("themeChanged", applyTheme);
         tg.onEvent("viewportChanged", applyTheme);
       }
-      loadFromCloud(function (data) {
-        applyState(data);
-        if (!location.hash) location.hash = "#/feed";
-        route();
-        maybeAskFollowUp();
-      });
+      loadLocal();
+      if (!location.hash) location.hash = "#/feed";
+      route();
     }
 
     boot();
