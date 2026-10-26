@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>Стоп-кран</title>
+  <!-- Официальный Telegram WebApp SDK. Других внешних библиотек нет. -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    /* =========================================================
+       ЦВЕТА И ТЕКСТЫ ДЛЯ НОВИЧКА
+       Меняйте CSS-переменные ниже — это «палитра» приложения.
+       Telegram подставит свои themeParams поверх этих значений.
+       ========================================================= */
+    :root {
+      --bg: #0f1115;
+      --bg-secondary: #1a1d24;
+      --card: #22262f;
+      --text: #f4f6fb;
+      --hint: #8b93a7;
+      --link: #6cb6ff;
+      --button: #2ea6ff;
+      --button-text: #ffffff;
+      --accent: #2ea6ff;
+      --danger: #ff5c7a;
+      --ok: #3dd68c;
+      --border: rgba(255, 255, 255, 0.08);
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      --radius: 16px;
+      --nav-h: 64px;
+      --header-h: 52px;
+      /* Safe-area: Telegram проставляет --tg-safe-area-inset-* */
+      --safe-top: var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px));
+      --safe-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+      --safe-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
+      --safe-right: var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
+      --app-height: 100dvh;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      padding-left: var(--safe-left);
+      padding-right: var(--safe-right);
+    }
+
+    #app {
+      height: var(--app-height);
+      max-height: var(--app-height);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .header {
+      flex: 0 0 auto;
+      min-height: var(--header-h);
+      padding: 10px 16px;
+      padding-top: calc(10px + var(--safe-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header .sub {
+      font-size: 12px;
+      color: var(--hint);
+      margin-top: 2px;
+    }
+
+    .content {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px 16px;
+      padding-bottom: calc(var(--nav-h) + 24px + var(--safe-bottom));
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+    .amount {
+      display: inline-block;
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .meta {
+      font-size: 13px;
+      color: var(--hint);
+      line-height: 1.45;
+      margin: 4px 0;
+    }
+    .meta b { color: var(--text); font-weight: 600; }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .votes {
+      display: flex;
+      gap: 8px;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+    .pill {
+      background: var(--bg-secondary);
+      border-radius: 999px;
+      padding: 4px 10px;
+      color: var(--text);
+    }
+    .pill.ok { color: var(--ok); }
+    .pill.no { color: var(--danger); }
+
+    button, .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 650;
+      cursor: pointer;
+      background: var(--button);
+      color: var(--button-text);
+    }
+    .btn.ghost {
+      background: var(--bg-secondary);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn.danger { background: var(--danger); color: #fff; }
+    .btn.ok { background: var(--ok); color: #0b1a12; }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+    .btn.full { width: 100%; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--hint);
+      margin: 12px 0 6px;
+    }
+    input, textarea {
+      width: 100%;
+      background: var(--bg-secondary);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 16px; /* 16px — чтобы iOS не зумил */
+      outline: none;
+      font-family: inherit;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+
+    .hint { font-size: 12px; color: var(--hint); margin-top: 8px; }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 14px;
+      border: 1px solid var(--border);
+    }
+    .stat .n { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; }
+    .stat .t { font-size: 12px; color: var(--hint); margin-top: 4px; }
+    .badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      vertical-align: middle;
+    }
+    .badge.free { background: var(--bg-secondary); color: var(--hint); border: 1px solid var(--border); }
+
+    .nav {
+      position: fixed;
+      left: var(--safe-left);
+      right: var(--safe-right);
+      bottom: 0;
+      height: calc(var(--nav-h) + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      z-index: 20;
+    }
+    .nav button {
+      background: transparent;
+      color: var(--hint);
+      border-radius: 0;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 8px 4px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .nav button.active { color: var(--accent); }
+    .nav .ico { font-size: 18px; line-height: 1; }
+
+    .empty {
+      text-align: center;
+      color: var(--hint);
+      padding: 40px 16px;
+    }
+
+    /* Модальные окна: голосование и follow-up после паузы */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 40;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .overlay.open { display: flex; }
+    .sheet {
+      width: 100%;
+      max-width: 560px;
+      background: var(--card);
+      border-radius: 20px 20px 0 0;
+      padding: 16px 16px calc(16px + var(--safe-bottom));
+      border: 1px solid var(--border);
+    }
+    .sheet h2 { margin: 0 0 8px; font-size: 18px; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+      transform: translateX(-50%) translateY(20px);
+      background: var(--text);
+      color: var(--bg);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 650;
+      opacity: 0;
+      pointer-events: none;
+      transition: 0.25s ease;
+      z-index: 50;
+      max-width: 90%;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .comments { margin-top: 8px; }
+    .comment {
+      font-size: 13px;
+      color: var(--hint);
+      padding: 6px 0;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div>
+        <h1 id="screenTitle">Стоп-кран</h1>
+        <div class="sub" id="screenSub">Анонимный суд над импульсными покупками</div>
+      </div>
+      <span class="badge" id="planBadge">FREE</span>
+    </header>
+
+    <main class="content" id="content">
+      <!-- 1. Лента заявок -->
+      <section id="screen-feed" class="screen active"></section>
+
+      <!-- 2. Создать заявку -->
+      <section id="screen-create" class="screen">
+        <p class="hint">Опишите покупку честно. Другие увидят заявку анонимно и скажут, стоит ли брать.</p>
+        <label for="f-title">Что купить</label>
+        <input id="f-title" maxlength="80" placeholder="Например: новые наушники" />
+        <label for="f-amount">Сумма</label>
+        <input id="f-amount" type="number" min="1" step="1" inputmode="numeric" placeholder="12000" />
+        <label for="f-reason">Почему хочу купить</label>
+        <textarea id="f-reason" maxlength="400" placeholder="Старые сломались, скидка до вечера…"></textarea>
+        <label for="f-alt">Альтернатива (необязательно)</label>
+        <textarea id="f-alt" maxlength="300" placeholder="Подождать зарплату / взять б/у / обойтись"></textarea>
+        <p class="hint" id="createHint">Лимит бесплатного тарифа: 3 заявки. Кнопка «Отправить на суд» — внизу экрана (MainButton Telegram).</p>
+        <button class="btn full" id="fallbackSubmit" type="button" style="margin-top:14px;display:none">Отправить на суд</button>
+      </section>
+
+      <!-- 3. Моя статистика -->
+      <section id="screen-stats" class="screen"></section>
+
+      <!-- 4. Профиль / Paywall -->
+      <section id="screen-profile" class="screen"></section>
+    </main>
+
+    <nav class="nav" id="nav">
+      <button data-hash="#/feed" class="active"><span class="ico">🛑</span>Лента</button>
+      <button data-hash="#/create"><span class="ico">➕</span>Заявка</button>
+      <button data-hash="#/stats"><span class="ico">📊</span>Статистика</button>
+      <button data-hash="#/profile"><span class="ico">👤</span>Профиль</button>
+    </nav>
+  </div>
+
+  <!-- Голосование -->
+  <div class="overlay" id="voteOverlay">
+    <div class="sheet">
+      <h2>Голос суда</h2>
+      <p class="meta" id="voteTitle"></p>
+      <div class="row">
+        <button class="btn ok" id="voteFor">За покупку</button>
+        <button class="btn danger" id="voteAgainst">Против</button>
+      </div>
+      <label for="voteComment">Короткий комментарий (необязательно)</label>
+      <textarea id="voteComment" maxlength="140" placeholder="«Подожди неделю» / «Бери, это инструмент»"></textarea>
+      <div class="row">
+        <button class="btn ghost" id="voteCancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Вопрос после 24 часов паузы -->
+  <div class="overlay" id="followOverlay">
+    <div class="sheet">
+      <h2>Пауза закончилась</h2>
+      <p class="meta" id="followText"></p>
+      <p><b>Ты всё ещё хочешь это купить?</b></p>
+      <div class="row">
+        <button class="btn ok" id="followYes">Да, всё ещё хочу</button>
+        <button class="btn danger" id="followNo">Нет, передумал</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* =========================================================
+       КОНФИГ: тексты, лимиты, имя бота
+       Подставьте своего бота и URL Mini App перед продом.
+       ========================================================= */
+    const CONFIG = {
+      BOT_USERNAME: "StopKranBot",          // без @ — поменяйте на своего бота
+      APP_URL: "https://YOUR_USERNAME.github.io/", // URL GitHub Pages / Netlify
+      FREE_LIMIT: 3,
+      PAUSE_MS: 24 * 60 * 60 * 1000,        // 24 часа. Для тестов поставьте 60 * 1000
+      STORAGE_KEY: "stopkran_v1",
+      CURRENCY: "₽"
+    };
+
+    /* ---------- Telegram WebApp: безопасная обёртка ---------- */
+    // Если открыли не из Telegram (браузер), подставляем заглушку,
+    // чтобы MVP можно было отладить локально.
+    (function ensureTelegram() {
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined) {
+        return;
+      }
+      const store = {};
+      window.Telegram = window.Telegram || {};
+      window.Telegram.WebApp = {
+        initData: "",
+        initDataUnsafe: { user: { id: 1, first_name: "Dev", username: "dev" } },
+        colorScheme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+        themeParams: {},
+        viewportStableHeight: window.innerHeight,
+        ready: function () {},
+        expand: function () {},
+        HapticFeedback: {
+          impactOccurred: function () {},
+          notificationOccurred: function () {},
+          selectionChanged: function () {}
+        },
+        MainButton: {
+          isVisible: false,
+          text: "",
+          show: function () { this.isVisible = true; document.getElementById("fallbackSubmit").style.display = "block"; },
+          hide: function () { this.isVisible = false; },
+          setText: function (t) { this.text = t; document.getElementById("fallbackSubmit").textContent = t; },
+          setParams: function (p) { if (p && p.text) this.setText(p.text); this.show(); },
+          enable: function () {},
+          disable: function () {},
+          onClick: function (fn) { this._fn = fn; },
+          offClick: function (fn) { if (this._fn === fn) this._fn = null; }
+        },
+        BackButton: { show: function () {}, hide: function () {}, onClick: function () {} },
+        CloudStorage: {
+          setItem: function (k, v, cb) { store[k] = v; cb && cb(null, true); },
+          getItem: function (k, cb) { cb && cb(null, store[k] || ""); },
+          getItems: function (keys, cb) {
+            const out = {};
+            keys.forEach(function (k) { out[k] = store[k] || ""; });
+            cb && cb(null, out);
+          }
+        },
+        showPopup: function (p, cb) { const ok = window.confirm((p.title || "") + "\n" + (p.message || "")); cb && cb(ok ? "ok" : "cancel"); },
+        showAlert: function (m, cb) { window.alert(m); cb && cb(); },
+        switchInlineQuery: function () { window.alert("switchInlineQuery доступен только внутри Telegram"); },
+        openTelegramLink: function (url) { window.open(url, "_blank"); },
+        openLink: function (url) { window.open(url, "_blank"); },
+        onEvent: function () {},
+        offEvent: function () {}
+      };
+    })();
+
+    const tg = window.Telegram.WebApp;
+
+    function haptic(kind, style) {
+      try {
+        const h = tg.HapticFeedback;
+        if (!h) return;
+        if (kind === "impact") h.impactOccurred(style || "light");
+        else if (kind === "notify") h.notificationOccurred(style || "success");
+        else if (kind === "select") h.selectionChanged();
+      } catch (e) { /* старые клиенты Telegram */ }
+    }
+
+    /* ---------- Тема Telegram ---------- */
+    function applyTheme() {
+      const p = tg.themeParams || {};
+      const root = document.documentElement;
+      if (p.bg_color) root.style.setProperty("--bg", p.bg_color);
+      if (p.secondary_bg_color) root.style.setProperty("--bg-secondary", p.secondary_bg_color);
+      if (p.section_bg_color) root.style.setProperty("--card", p.section_bg_color);
+      else if (p.secondary_bg_color) root.style.setProperty("--card", p.secondary_bg_color);
+      if (p.text_color) root.style.setProperty("--text", p.text_color);
+      if (p.hint_color) root.style.setProperty("--hint", p.hint_color);
+      if (p.link_color) root.style.setProperty("--link", p.link_color);
+      if (p.button_color) {
+        root.style.setProperty("--button", p.button_color);
+        root.style.setProperty("--accent", p.button_color);
+      }
+      if (p.button_text_color) root.style.setProperty("--button-text", p.button_text_color);
+      if (p.destructive_text_color) root.style.setProperty("--danger", p.destructive_text_color);
+      const h = tg.viewportStableHeight || window.innerHeight;
+      root.style.setProperty("--app-height", h + "px");
+      try {
+        if (tg.setHeaderColor && p.bg_color) tg.setHeaderColor(p.bg_color);
+        if (tg.setBackgroundColor && p.bg_color) tg.setBackgroundColor(p.bg_color);
+      } catch (e) {}
+    }
+
+    /* ---------- Хранилище: CloudStorage или localStorage ---------- */
+    const memory = { requests: [], profile: { isPro: false }, stats: { changedMind: 0, stillWanted: 0, savedAmount: 0 } };
+
+    function currentUserId() {
+      const u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
+      return String(u.id || "anon");
+    }
+
+    function demoRequests() {
+      const now = Date.now();
+      return [
+        {
+          id: "demo-1",
+          ownerId: "demo",
+          title: "Механическая клавиатура за 18 000",
+          amount: 18000,
+          reason: "Хочется RGB и «как у блогеров». Старая ещё работает.",
+          alternative: "Купить кейкапы на текущую клавиатуру за 2 000",
+          createdAt: now - 3600 * 1000,
+          votesFor: 1,
+          votesAgainst: 4,
+          comments: [{ vote: "against", text: "Это импульс. Подожди месяц.", at: now }],
+          votedBy: {},
+          pauseUntil: null,
+          followUp: null
+        },
+        {
+          id: "demo-2",
+          ownerId: "demo",
+          title: "Кроссовки, которые уже есть в другом цвете",
+          amount: 14990,
+          reason: "Скидка 20% до полуночи.",
+          alternative: "Пробежка в тех, что есть",
+          createdAt: now - 7200 * 1000,
+          votesFor: 0,
+          votesAgainst: 2,
+          comments: [],
+          votedBy: {},
+          pauseUntil: null,
+          followUp: null
+        },
+        {
+          id: "demo-3",
+          ownerId: "demo",
+          title: "Онлайн-курс «как успевать всё»",
+          amount: 7990,
+          reason: "Кажется, что жизнь наладится, если купить ещё один курс.",
+          alternative: "Закрыть 3 задачи из уже купленного курса",
+          createdAt: now - 10800 * 1000,
+          votesFor: 2,
+          votesAgainst: 3,
+          comments: [{ vote: "for", text: "Если это рабочий навык — бери.", at: now }],
+          votedBy: {},
+          pauseUntil: null,
+          followUp: null
+        }
+      ];
+    }
+
+    function loadLocal() {
+      try {
+        const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) { return null; }
+    }
+
+    function saveLocal(data) {
+      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function insideTelegram() {
+      return !!(tg.initData && String(tg.initData).length > 0);
+    }
+
+    function persistToCloud(data) {
+      const json = JSON.stringify(data);
+      saveLocal(data);
+      if (!insideTelegram() || !tg.CloudStorage || !tg.CloudStorage.setItem) return;
+      // CloudStorage: значение до ~4096 байт. Режем на куски.
+      const chunkSize = 3500;
+      const chunks = [];
+      for (let i = 0; i < json.length; i += chunkSize) chunks.push(json.slice(i, i + chunkSize));
+      const meta = JSON.stringify({ n: chunks.length, updatedAt: Date.now() });
+      try {
+        tg.CloudStorage.setItem(CONFIG.STORAGE_KEY + "_meta", meta, function () {
+          chunks.forEach(function (c, i) {
+            tg.CloudStorage.setItem(CONFIG.STORAGE_KEY + "_c" + i, c, function () {});
+          });
+        });
+      } catch (e) { /* вне Telegram CloudStorage может бросать */ }
+      // ЗДЕСЬ БУДЕТ БЭКЕНД: общая лента всех пользователей, а не только CloudStorage текущего аккаунта.
+    }
+
+    function loadFromCloud(cb) {
+      const local = loadLocal();
+      if (!insideTelegram() || !tg.CloudStorage || !tg.CloudStorage.getItem) {
+        cb(local);
+        return;
+      }
+      let done = false;
+      function finish(data) {
+        if (done) return;
+        done = true;
+        cb(data || local);
+      }
+      // Вне настоящего клиента callback может не прийти — не блокируем UI.
+      setTimeout(function () { finish(local); }, 700);
+      try {
+        tg.CloudStorage.getItem(CONFIG.STORAGE_KEY + "_meta", function (err, metaRaw) {
+          if (err || !metaRaw) {
+            finish(local);
+            return;
+          }
+          let meta;
+          try { meta = JSON.parse(metaRaw); } catch (e) { finish(local); return; }
+          const keys = [];
+          for (let i = 0; i < (meta.n || 0); i++) keys.push(CONFIG.STORAGE_KEY + "_c" + i);
+          if (!keys.length || !tg.CloudStorage.getItems) {
+            finish(local);
+            return;
+          }
+          tg.CloudStorage.getItems(keys, function (e2, values) {
+            if (e2 || !values) { finish(local); return; }
+            const json = keys.map(function (k) { return values[k] || ""; }).join("");
+            try { finish(JSON.parse(json)); }
+            catch (e3) { finish(local); }
+          });
+        });
+      } catch (e) {
+        finish(local);
+      }
+    }
+
+    function applyState(data) {
+      if (!data) {
+        memory.requests = demoRequests();
+        memory.profile = { isPro: false };
+        memory.stats = { changedMind: 0, stillWanted: 0, savedAmount: 0 };
+        persistToCloud(memory);
+        return;
+      }
+      memory.requests = Array.isArray(data.requests) && data.requests.length ? data.requests : demoRequests();
+      memory.profile = data.profile || { isPro: false };
+      memory.stats = data.stats || { changedMind: 0, stillWanted: 0, savedAmount: 0 };
+    }
+
+    function save() { persistToCloud(memory); }
+
+    /* ---------- Утилиты ---------- */
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function money(n) {
+      return Number(n || 0).toLocaleString("ru-RU") + " " + CONFIG.CURRENCY;
+    }
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(function () { el.classList.remove("show"); }, 2200);
+    }
+    function uid() {
+      return "r_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    }
+    function ownCount() {
+      const me = currentUserId();
+      return memory.requests.filter(function (r) { return r.ownerId === me; }).length;
+    }
+    function hasVoted(req) {
+      return !!(req.votedBy && req.votedBy[currentUserId()]);
+    }
+    function remainingPause(req) {
+      if (!req.pauseUntil) return 0;
+      return Math.max(0, req.pauseUntil - Date.now());
+    }
+    function formatLeft(ms) {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      if (h > 0) return h + " ч " + m + " мин";
+      return Math.max(1, m) + " мин";
+    }
+
+    /* ---------- Роутинг по хэшу ---------- */
+    const TITLES = {
+      feed: ["Стоп-кран", "Лента анонимных заявок"],
+      create: ["Новая заявка", "Отправь покупку на суд"],
+      stats: ["Моя статистика", "Что удалось не купить"],
+      profile: ["Профиль", "Тариф и лимиты"]
+    };
+
+    function route() {
+      const hash = (location.hash || "#/feed").replace(/^#\/?/, "");
+      const name = (hash.split("/")[0] || "feed");
+      const known = { feed: 1, create: 1, stats: 1, profile: 1 };
+      const page = known[name] ? name : "feed";
+      document.querySelectorAll(".screen").forEach(function (el) { el.classList.remove("active"); });
+      document.getElementById("screen-" + page).classList.add("active");
+      document.querySelectorAll("#nav button").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-hash") === "#/" + page);
+      });
+      document.getElementById("screenTitle").textContent = TITLES[page][0];
+      document.getElementById("screenSub").textContent = TITLES[page][1];
+      updatePlanBadge();
+      if (page === "feed") renderFeed();
+      if (page === "stats") renderStats();
+      if (page === "profile") renderProfile();
+      setupMainButton(page === "create");
+    }
+
+    function updatePlanBadge() {
+      const el = document.getElementById("planBadge");
+      if (memory.profile.isPro) {
+        el.textContent = "PRO";
+        el.classList.remove("free");
+      } else {
+        el.textContent = "FREE";
+        el.classList.add("free");
+      }
+    }
+
+    /* ---------- MainButton Telegram ---------- */
+    function onMainSubmit() {
+      submitRequest();
+    }
+    function setupMainButton(show) {
+      const mb = tg.MainButton;
+      const fallback = document.getElementById("fallbackSubmit");
+      if (show) {
+        mb.setText("Отправить на суд");
+        if (mb.setParams) {
+          mb.setParams({
+            text: "Отправить на суд",
+            color: (tg.themeParams && tg.themeParams.button_color) || "#2ea6ff",
+            text_color: (tg.themeParams && tg.themeParams.button_text_color) || "#ffffff",
+            is_visible: true,
+            is_active: true
+          });
+        } else {
+          mb.show();
+        }
+        mb.onClick(onMainSubmit);
+        // В браузере MainButton нет — показываем обычную кнопку.
+        if (!insideTelegram()) fallback.style.display = "block";
+      } else {
+        mb.hide();
+        mb.offClick && mb.offClick(onMainSubmit);
+        fallback.style.display = "none";
+      }
+    }
+
+    /* ---------- Рендер экранов ---------- */
+    function renderFeed() {
+      const root = document.getElementById("screen-feed");
+      const me = currentUserId();
+      const list = memory.requests.slice().sort(function (a, b) { return b.createdAt - a.createdAt; });
+      if (!list.length) {
+        root.innerHTML = "<div class='empty'>Пока нет заявок.<br/>Создайте первую на вкладке «Заявка».</div>";
+        return;
+      }
+      root.innerHTML = list.map(function (r) {
+        const mine = r.ownerId === me;
+        const voted = hasVoted(r);
+        const left = remainingPause(r);
+        let extra = "";
+        if (mine && r.followUp === "yes") extra = "<div class='meta'>Итог: всё ещё хотел купить.</div>";
+        if (mine && r.followUp === "no") extra = "<div class='meta'>Итог: передумал. Сэкономлено " + esc(money(r.amount)) + "</div>";
+        if (mine && r.pauseUntil && left > 0) extra = "<div class='meta'>Пауза: ещё " + esc(formatLeft(left)) + "</div>";
+        if (mine && r.pauseUntil && left === 0 && !r.followUp) extra = "<div class='meta'><b>Пора ответить: ты всё ещё хочешь это купить?</b></div>";
+        const comments = (r.comments || []).slice(-3).map(function (c) {
+          const tag = c.vote === "for" ? "за" : "против";
+          return "<div class='comment'>" + esc(tag) + ": " + esc(c.text) + "</div>";
+        }).join("");
+        return (
+          "<article class='card' data-id='" + esc(r.id) + "'>" +
+            "<h3>" + esc(r.title) + (mine ? " <span class='badge'>моя</span>" : "") + "</h3>" +
+            "<div class='amount'>" + esc(money(r.amount)) + "</div>" +
+            "<div class='meta'><b>Причина:</b> " + esc(r.reason) + "</div>" +
+            (r.alternative ? "<div class='meta'><b>Альтернатива:</b> " + esc(r.alternative) + "</div>" : "") +
+            extra +
+            "<div class='votes'><span class='pill ok'>за " + r.votesFor + "</span><span class='pill no'>против " + r.votesAgainst + "</span></div>" +
+            (comments ? "<div class='comments'>" + comments + "</div>" : "") +
+            "<div class='row'>" +
+              "<button class='btn' data-act='vote' " + (voted ? "disabled" : "") + ">" + (voted ? "Вы уже голосовали" : "Голосовать") + "</button>" +
+              "<button class='btn ghost' data-act='share'>Поделиться</button>" +
+            "</div>" +
+          "</article>"
+        );
+      }).join("");
+    }
+
+    function renderStats() {
+      const me = currentUserId();
+      const created = ownCount();
+      const s = memory.stats;
+      document.getElementById("screen-stats").innerHTML =
+        "<div class='stat-grid'>" +
+          "<div class='stat'><div class='n'>" + created + "</div><div class='t'>Заявок создано</div></div>" +
+          "<div class='stat'><div class='n'>" + s.changedMind + "</div><div class='t'>Передумал после паузы</div></div>" +
+          "<div class='stat' style='grid-column:1/-1'><div class='n'>" + esc(money(s.savedAmount)) + "</div><div class='t'>Сэкономленная сумма (отклонённые покупки)</div></div>" +
+          "<div class='stat'><div class='n'>" + s.stillWanted + "</div><div class='t'>Всё ещё хотел купить</div></div>" +
+        "</div>" +
+        "<p class='hint'>Статистика считается по вашим заявкам после 24 часов паузы. " +
+        "Пока нет общего сервера, лента живёт в CloudStorage/localStorage этого устройства.</p>";
+    }
+
+    function renderProfile() {
+      const pro = memory.profile.isPro;
+      const used = ownCount();
+      const limit = pro ? "безлимит" : (used + " / " + CONFIG.FREE_LIMIT);
+      document.getElementById("screen-profile").innerHTML =
+        "<div class='card'>" +
+          "<h3>Статус: " + (pro ? "Pro" : "Бесплатный") + "</h3>" +
+          "<p class='meta'>Заявки: " + esc(String(limit)) + "</p>" +
+          "<p class='meta'>Пользователь: анонимно (id " + esc(currentUserId()) + ")</p>" +
+          (pro
+            ? "<p class='hint'>Безлимит включён. Спасибо, что поддерживаете Стоп-кран.</p>"
+            : "<button class='btn full' id='unlockBtn' type='button'>Разблокировать безлимит</button>" +
+              "<p class='hint'>Оплата пока заглушка. Позже сюда подключат Telegram Stars / Payments.</p>") +
+        "</div>";
+      const btn = document.getElementById("unlockBtn");
+      if (btn) btn.onclick = unlockPro;
+    }
+
+    function grantProLocal() {
+      memory.profile.isPro = true;
+      save();
+      haptic("notify", "success");
+      toast("Pro включён (локально)");
+      updatePlanBadge();
+      renderProfile();
+    }
+
+    function unlockPro() {
+      haptic("impact", "medium");
+      // ЗДЕСЬ БУДЕТ БЭКЕНД: invoice Telegram Stars, проверка оплаты, выдача Pro.
+      const title = "Pro Стоп-кран";
+      const message = "Оплата ещё не подключена. Включить Pro локально для теста?";
+      if (!insideTelegram() || typeof tg.showPopup !== "function") {
+        if (window.confirm(title + "\n\n" + message)) grantProLocal();
+        return;
+      }
+      tg.showPopup({
+        title: title,
+        message: message,
+        buttons: [
+          { id: "ok", type: "ok" },
+          { id: "cancel", type: "cancel" }
+        ]
+      }, function (id) {
+        if (id === "ok") grantProLocal();
+      });
+    }
+
+    /* ---------- Создание заявки ---------- */
+    function submitRequest() {
+      const title = document.getElementById("f-title").value.trim();
+      const amount = Number(document.getElementById("f-amount").value);
+      const reason = document.getElementById("f-reason").value.trim();
+      const alternative = document.getElementById("f-alt").value.trim();
+      if (title.length < 3) { toast("Напишите, что хотите купить"); haptic("notify", "error"); return; }
+      if (!(amount > 0)) { toast("Укажите сумму"); haptic("notify", "error"); return; }
+      if (reason.length < 3) { toast("Укажите причину"); haptic("notify", "error"); return; }
+      if (!memory.profile.isPro && ownCount() >= CONFIG.FREE_LIMIT) {
+        haptic("notify", "warning");
+        toast("Лимит 3 заявки. Откройте Профиль → безлимит");
+        location.hash = "#/profile";
+        return;
+      }
+      const req = {
+        id: uid(),
+        ownerId: currentUserId(),
+        title: title,
+        amount: Math.round(amount),
+        reason: reason,
+        alternative: alternative,
+        createdAt: Date.now(),
+        votesFor: 0,
+        votesAgainst: 0,
+        comments: [],
+        votedBy: {},
+        pauseUntil: null,
+        followUp: null
+      };
+      memory.requests.push(req);
+      save();
+      haptic("notify", "success");
+      document.getElementById("f-title").value = "";
+      document.getElementById("f-amount").value = "";
+      document.getElementById("f-reason").value = "";
+      document.getElementById("f-alt").value = "";
+      toast("Заявка ушла на суд");
+      location.hash = "#/feed";
+    }
+
+    /* ---------- Голосование ---------- */
+    let voteTargetId = null;
+    let pendingSide = null;
+
+    function openVote(id) {
+      const req = memory.requests.find(function (r) { return r.id === id; });
+      if (!req) return;
+      if (hasVoted(req)) { toast("Вы уже голосовали"); return; }
+      voteTargetId = id;
+      pendingSide = null;
+      document.getElementById("voteTitle").textContent = req.title + " · " + money(req.amount);
+      document.getElementById("voteComment").value = "";
+      document.getElementById("voteOverlay").classList.add("open");
+      haptic("select");
+    }
+
+    function castVote(side) {
+      pendingSide = side;
+      haptic("impact", "light");
+      const comment = document.getElementById("voteComment").value.trim();
+      const req = memory.requests.find(function (r) { return r.id === voteTargetId; });
+      if (!req || hasVoted(req)) return;
+      req.votedBy = req.votedBy || {};
+      req.votedBy[currentUserId()] = side;
+      if (side === "for") req.votesFor += 1;
+      else req.votesAgainst += 1;
+      if (comment) {
+        req.comments = req.comments || [];
+        req.comments.push({ vote: side, text: comment, at: Date.now() });
+      }
+      // После первого голоса — 24 часа паузы для автора заявки.
+      if (!req.pauseUntil) req.pauseUntil = Date.now() + CONFIG.PAUSE_MS;
+      save();
+      document.getElementById("voteOverlay").classList.remove("open");
+      haptic("notify", "success");
+      toast(side === "for" ? "Голос «за» учтён" : "Голос «против» учтён");
+      renderFeed();
+      maybeAskFollowUp();
+    }
+
+    function shareRequest(id) {
+      const req = memory.requests.find(function (r) { return r.id === id; });
+      if (!req) return;
+      haptic("impact", "light");
+      const text = "🛑 Стоп-кран: стоит ли покупать «" + req.title + "» за " + money(req.amount) + "? Причина: " + req.reason;
+      try {
+        if (typeof tg.switchInlineQuery === "function") {
+          tg.switchInlineQuery(text, ["users", "groups", "channels", "bots"]);
+          return;
+        }
+      } catch (e) {}
+      const url = "https://t.me/share/url?url=" + encodeURIComponent(CONFIG.APP_URL) + "&text=" + encodeURIComponent(text);
+      if (typeof tg.openTelegramLink === "function") tg.openTelegramLink(url);
+      else window.open(url, "_blank");
+    }
+
+    /* ---------- Follow-up после паузы ---------- */
+    let followId = null;
+    function maybeAskFollowUp() {
+      const me = currentUserId();
+      const due = memory.requests.find(function (r) {
+        return r.ownerId === me && r.pauseUntil && Date.now() >= r.pauseUntil && !r.followUp;
+      });
+      if (!due) return;
+      followId = due.id;
+      document.getElementById("followText").textContent =
+        due.title + " · " + money(due.amount) + ". Суд: за " + due.votesFor + " / против " + due.votesAgainst + ".";
+      document.getElementById("followOverlay").classList.add("open");
+      haptic("notify", "warning");
+    }
+
+    function answerFollowUp(stillWant) {
+      const req = memory.requests.find(function (r) { return r.id === followId; });
+      document.getElementById("followOverlay").classList.remove("open");
+      if (!req) return;
+      if (stillWant) {
+        req.followUp = "yes";
+        memory.stats.stillWanted += 1;
+        toast("Ок. Решение за тобой — но пауза уже сработала.");
+      } else {
+        req.followUp = "no";
+        memory.stats.changedMind += 1;
+        memory.stats.savedAmount += Number(req.amount) || 0;
+        toast("Красиво. Сэкономлено " + money(req.amount));
+      }
+      save();
+      haptic("notify", "success");
+      renderFeed();
+      if ((location.hash || "").indexOf("stats") !== -1) renderStats();
+      setTimeout(maybeAskFollowUp, 400);
+    }
+
+    /* ---------- События UI ---------- */
+    document.getElementById("nav").addEventListener("click", function (e) {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      haptic("select");
+      location.hash = btn.getAttribute("data-hash");
+    });
+    document.getElementById("screen-feed").addEventListener("click", function (e) {
+      const btn = e.target.closest("button");
+      const card = e.target.closest(".card");
+      if (!btn || !card) return;
+      const id = card.getAttribute("data-id");
+      const act = btn.getAttribute("data-act");
+      if (act === "vote") openVote(id);
+      if (act === "share") shareRequest(id);
+    });
+    document.getElementById("voteFor").onclick = function () { castVote("for"); };
+    document.getElementById("voteAgainst").onclick = function () { castVote("against"); };
+    document.getElementById("voteCancel").onclick = function () {
+      document.getElementById("voteOverlay").classList.remove("open");
+    };
+    document.getElementById("followYes").onclick = function () { answerFollowUp(true); };
+    document.getElementById("followNo").onclick = function () { answerFollowUp(false); };
+    document.getElementById("fallbackSubmit").onclick = submitRequest;
+    window.addEventListener("hashchange", route);
+
+    /* ---------- Старт Mini App ---------- */
+    function boot() {
+      try { tg.ready(); } catch (e) {}
+      try { tg.expand(); } catch (e) {}
+      applyTheme();
+      if (tg.onEvent) {
+        tg.onEvent("themeChanged", applyTheme);
+        tg.onEvent("viewportChanged", applyTheme);
+      }
+      loadFromCloud(function (data) {
+        applyState(data);
+        if (!location.hash) location.hash = "#/feed";
+        route();
+        maybeAskFollowUp();
+      });
+    }
+
+    boot();
+  </script>
+</body>
+</html>
