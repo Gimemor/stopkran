@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "stopkran-local",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "stopkran",
+      "Username": "stopkran",
+      "SSLMode": "prefer",
+      "Comment": "Локальная Postgres из docker-compose (пароль: stopkran)"
+    }
+  }
+}

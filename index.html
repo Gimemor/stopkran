@@ -7,8 +7,7 @@
   <title>Стоп-кран</title>
   <!-- Официальный Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <!-- Supabase JS (CDN, без сборщика) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Секретов и клиента БД здесь больше нет: все данные идут через backend API -->
   <style>
     /* =========================================================
        ЦВЕТА И ТЕКСТЫ ДЛЯ НОВИЧКА
@@ -362,23 +361,21 @@
 
   <script>
     /* =========================================================
-       КЛЮЧИ SUPABASE
-       Вставьте Project URL и anon/publishable key из Settings → API.
-
-       ВАЖНО: в браузере можно использовать только HTTPS-адрес
-       https://<project-ref>.supabase.co и ПУБЛИЧНЫЙ ключ.
-       Строку подключения вида postgresql://postgres:пароль@db...:5432
-       сюда вставлять нельзя — это прямой доступ к БД, любой, кто
-       откроет исходники страницы, получит полный доступ к данным.
+       АДРЕС БЭКЕНДА
+       Здесь нет ни ключей БД, ни паролей — только публичный URL API.
+       Все секреты лежат в backend/.env на сервере.
        ========================================================= */
-    const SUPABASE_URL = 'https://jtifgjfkbkjvjclgdjyg.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_Cj9EiOqZlVaBJ97zowPP_w_z8juZwol';
 
     /* =========================================================
        КОНФИГ: тексты, лимиты, имя бота
        ========================================================= */
     const CONFIG = {
-      BOT_USERNAME: "StopKranBot",
+      // Один origin через /mini/ (тот же туннель, что API) → берём текущий.
+      // Иначе (локальный статик-сервер) — бэкенд на localhost:8000.
+      API_BASE: (location.protocol === "https:" && location.origin)
+        ? location.origin
+        : "http://localhost:8000",
+      BOT_USERNAME: "stopkran_test_bot",
       APP_URL: "https://YOUR_USERNAME.github.io/",
       FREE_LIMIT: 3,
       PAUSE_MS: 24 * 60 * 60 * 1000, // 24 часа. Для тестов: 60 * 1000
@@ -480,20 +477,31 @@
       return dev;
     }
 
-    /* ---------- Supabase-клиент ---------- */
-    let db = null;
-    function hasSupabaseKeys() {
-      return !!(SUPABASE_URL && SUPABASE_KEY);
+    /* ---------- Клиент backend API ---------- */
+    function apiHeaders() {
+      const h = { "Content-Type": "application/json" };
+      // В Telegram — подписанный initData, бэкенд проверяет HMAC.
+      // В браузере — временный dev-id (работает только при DEV_ALLOW_UNVERIFIED=true).
+      if (tg.initData) h["X-Telegram-Init-Data"] = tg.initData;
+      else h["X-Dev-User-Id"] = currentUserId();
+      return h;
     }
-    function getDb() {
-      if (db) return db;
-      if (!hasSupabaseKeys()) return null;
-      if (!window.supabase || !window.supabase.createClient) {
-        toast("Не загрузился supabase-js. Проверьте CDN.");
-        return null;
+
+    async function api(path, options) {
+      const res = await fetch(CONFIG.API_BASE + path, Object.assign(
+        { headers: apiHeaders() },
+        options || {}
+      ));
+      let body = null;
+      try { body = await res.json(); } catch (e) {}
+      if (!res.ok) {
+        let msg = body && (body.detail || body.message);
+        if (Array.isArray(msg)) msg = msg.map(function (m) { return m.msg || m; }).join("; ");
+        const err = new Error(msg ? String(msg) : ("HTTP " + res.status));
+        err.status = res.status;
+        throw err;
       }
-      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      return db;
+      return body;
     }
 
     /* ---------- Личные данные: дневник, таймеры, Pro, статистика ---------- */
@@ -547,40 +555,20 @@
       saveLocal();
     }
 
-    /* ---------- Общая лента: SELECT requests + votes ---------- */
+    /* ---------- Общая лента: GET /api/feed ---------- */
     async function loadFeed() {
-      const client = getDb();
-      if (!client) {
+      let data;
+      try {
+        data = await api("/api/feed");
+      } catch (e) {
+        console.error(e);
         memory.requests = [];
-        return { ok: false, reason: "no-keys" };
+        return { ok: false, reason: e.message };
       }
-      const reqRes = await client
-        .from("requests")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (reqRes.error) {
-        console.error(reqRes.error);
-        return { ok: false, reason: reqRes.error.message };
-      }
-      const voteRes = await client.from("votes").select("*");
-      if (voteRes.error) {
-        console.error(voteRes.error);
-        return { ok: false, reason: voteRes.error.message };
-      }
-      const votes = voteRes.data || [];
-      memory.requests = (reqRes.data || []).map(function (row) {
-        const mine = votes.filter(function (v) { return String(v.request_id) === String(row.id); });
+      memory.requests = (data.requests || []).map(function (row) {
         const votedBy = {};
-        const comments = [];
-        const voteTimes = [];
-        let votesFor = 0;
-        let votesAgainst = 0;
-        mine.forEach(function (v) {
-          votedBy[String(v.user_id)] = v.side;
-          voteTimes.push(new Date(v.created_at).getTime());
-          if (v.side === "for") votesFor += 1;
-          else votesAgainst += 1;
-          if (v.comment) comments.push({ vote: v.side, text: v.comment, at: v.created_at });
+        Object.keys(row.voted_by || {}).forEach(function (k) {
+          votedBy[String(k)] = row.voted_by[k];
         });
         return {
           id: row.id,
@@ -590,11 +578,13 @@
           reason: row.reason,
           alternative: row.alternative || "",
           createdAt: new Date(row.created_at).getTime(),
-          votesFor: votesFor,
-          votesAgainst: votesAgainst,
-          comments: comments,
+          votesFor: row.votes_for,
+          votesAgainst: row.votes_against,
+          comments: (row.comments || []).map(function (c) {
+            return { vote: c.vote, text: c.text, at: c.at };
+          }),
           votedBy: votedBy,
-          voteTimes: voteTimes
+          voteTimes: (row.vote_times || []).map(function (t) { return new Date(t).getTime(); })
         };
       });
       syncPauseTimers();
@@ -668,14 +658,10 @@
 
     async function refreshFeed() {
       const res = await loadFeed();
-      if (!res.ok && res.reason === "no-keys") {
-        document.getElementById("screen-feed").innerHTML =
-          "<div class='empty'>Укажите SUPABASE_URL и SUPABASE_KEY в index.html,<br/>затем выполните SQL в Supabase.</div>";
-        return;
-      }
       if (!res.ok) {
         document.getElementById("screen-feed").innerHTML =
-          "<div class='empty'>Не удалось загрузить ленту.<br/>" + esc(res.reason || "ошибка") + "</div>";
+          "<div class='empty'>Не удалось загрузить ленту.<br/>" + esc(res.reason || "ошибка") +
+          "<br/><br/>Проверьте, что бэкенд запущен и CONFIG.API_BASE указывает на него.</div>";
         return;
       }
       renderFeed();
@@ -722,8 +708,8 @@
     /* ---------- Рендер ---------- */
     function renderFeed() {
       const root = document.getElementById("screen-feed");
-      if (!hasSupabaseKeys()) {
-        root.innerHTML = "<div class='empty'>Укажите SUPABASE_URL и SUPABASE_KEY в index.html,<br/>затем выполните SQL в Supabase.</div>";
+      if (!CONFIG.API_BASE) {
+        root.innerHTML = "<div class='empty'>Не задан CONFIG.API_BASE — адрес бэкенда.</div>";
         return;
       }
       const me = currentUserId();
@@ -774,7 +760,7 @@
           "<div class='stat' style='grid-column:1/-1'><div class='n'>" + esc(money(s.savedAmount)) + "</div><div class='t'>Сэкономленная сумма (отклонённые покупки)</div></div>" +
           "<div class='stat'><div class='n'>" + s.stillWanted + "</div><div class='t'>Всё ещё хотел купить</div></div>" +
         "</div>" +
-        "<p class='hint'>Дневник и таймер паузы хранятся только у вас (localStorage). Лента и голоса — в общей базе Supabase.</p>";
+        "<p class='hint'>Дневник и таймер паузы хранятся только у вас (localStorage). Лента и голоса — на сервере (Postgres + FastAPI).</p>";
     }
 
     function renderProfile() {
@@ -834,28 +820,29 @@
       if (title.length < 3) { toast("Напишите, что хотите купить"); haptic("notify", "error"); return; }
       if (!(amount > 0)) { toast("Укажите сумму"); haptic("notify", "error"); return; }
       if (reason.length < 3) { toast("Укажите причину"); haptic("notify", "error"); return; }
-      const client = getDb();
-      if (!client) { toast("Сначала заполните SUPABASE_URL и SUPABASE_KEY"); return; }
       if (!memory.profile.isPro && ownCount() >= CONFIG.FREE_LIMIT) {
         haptic("notify", "warning");
         toast("Лимит 3 заявки. Откройте Профиль → безлимит");
         location.hash = "#/profile";
         return;
       }
-      const { data, error } = await client.from("requests").insert({
-        owner_id: currentUserId(),
-        title: title,
-        amount: Math.round(amount),
-        reason: reason,
-        alternative: alternative || ""
-      }).select("id").single();
-
-if (error) {
-  toast("Не удалось отправить: " + error.message);
-  haptic("notify", "error");
-  return;
-}
-      if (data && data.id) diaryOf(data.id);
+      let created;
+      try {
+        created = await api("/api/requests", {
+          method: "POST",
+          body: JSON.stringify({
+            title: title,
+            amount: Math.round(amount),
+            reason: reason,
+            alternative: alternative || ""
+          })
+        });
+      } catch (e) {
+        toast("Не удалось отправить: " + e.message);
+        haptic("notify", "error");
+        return;
+      }
+      if (created && created.id) diaryOf(created.id);
       saveLocal();
       haptic("notify", "success");
       document.getElementById("f-title").value = "";
@@ -885,17 +872,17 @@ if (error) {
       const comment = document.getElementById("voteComment").value.trim();
       const req = memory.requests.find(function (r) { return String(r.id) === String(voteTargetId); });
       if (!req || hasVoted(req)) return;
-      const client = getDb();
-      if (!client) { toast("Сначала заполните ключи Supabase"); return; }
-      const { error } = await client.from("votes").insert({
-        request_id: req.id,
-        user_id: currentUserId(),
-        side: side,
-        comment: comment || ""
-      });
-      if (error) {
-        const dup = error.code === "23505" || /duplicate|unique/i.test(error.message || "");
-        toast(dup ? "Вы уже голосовали" : ("Ошибка голоса: " + error.message));
+      try {
+        await api("/api/votes", {
+          method: "POST",
+          body: JSON.stringify({
+            request_id: Number(req.id),
+            side: side,
+            comment: comment || ""
+          })
+        });
+      } catch (e) {
+        toast(e.status === 409 ? "Вы уже голосовали" : ("Ошибка голоса: " + e.message));
         haptic("notify", "error");
         return;
       }
