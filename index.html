@@ -363,10 +363,16 @@
   <script>
     /* =========================================================
        КЛЮЧИ SUPABASE
-       Вставьте Project URL и anon public key из Settings → API.
+       Вставьте Project URL и anon/publishable key из Settings → API.
+
+       ВАЖНО: в браузере можно использовать только HTTPS-адрес
+       https://<project-ref>.supabase.co и ПУБЛИЧНЫЙ ключ.
+       Строку подключения вида postgresql://postgres:пароль@db...:5432
+       сюда вставлять нельзя — это прямой доступ к БД, любой, кто
+       откроет исходники страницы, получит полный доступ к данным.
        ========================================================= */
-    const SUPABASE_URL = 'https://polished-brook-5264.foxinheart11.workers.dev';
-    const SUPABASE_KEY = 'sb_publishable_Vle_iQ8bW73sH1H3LGlikA_Gbs4CPQC';
+    const SUPABASE_URL = 'https://jtifgjfkbkjvjclgdjyg.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Cj9EiOqZlVaBJ97zowPP_w_z8juZwol';
 
     /* =========================================================
        КОНФИГ: тексты, лимиты, имя бота
@@ -836,19 +842,13 @@
         location.hash = "#/profile";
         return;
       }
-      function currentUserId() {
-  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-  if (tgUser && tgUser.id) return Number(tgUser.id);
-  return 123456789; // тестовый ID для браузера
-}
-
-const { data, error } = await client.from("requests").insert({
-  user_id: currentUserId(),
-  item_name: title,
-  amount: Math.round(amount),
-  reason: reason,
-  alternative: alternative || ""
-}).select("id").single();
+      const { data, error } = await client.from("requests").insert({
+        owner_id: currentUserId(),
+        title: title,
+        amount: Math.round(amount),
+        reason: reason,
+        alternative: alternative || ""
+      }).select("id").single();
 
 if (error) {
   toast("Не удалось отправить: " + error.message);
