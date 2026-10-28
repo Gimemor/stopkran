@@ -11,6 +11,10 @@ index.html  ──HTTP──▶  FastAPI (backend/)  ──asyncpg──▶  Pos
 
 В браузере нет ни одного секрета: ни ключей, ни пароля БД, ни токена бота.
 
+**Прод (Fly.io, регион `fra`):** API — https://stopkran.fly.dev/docs,
+Mini App — https://stopkran.fly.dev/mini/, БД — приложение `stopkran-db`.
+Конфиг деплоя — корневой `fly.toml`.
+
 ## Быстрый старт
 
 ```powershell
@@ -72,7 +76,8 @@ backend/
   Dockerfile               python:3.12-slim, non-root, healthcheck
   .env.example             шаблон (коммитится)
   .env                     секреты (gitignored)
-  fly.toml                 деплой на Fly.io
+Dockerfile                 образ для Fly.io (контекст — корень, отдаёт и index.html)
+fly.toml                   деплой на Fly.io
 ```
 
 ## API
@@ -173,15 +178,57 @@ curl http://localhost:8000/api/telegram/status
 
 ## Деплой
 
-Образ универсальный (`backend/Dockerfile`), слушает `$PORT`.
+Образ универсальный, слушает `$PORT`. Для Fly.io используется корневой `Dockerfile`
+(контекст — весь репозиторий): в него попадает и `index.html`, поэтому фронтенд отдаётся
+тем же origin по адресу `/mini/` — отдельный хостинг и CORS не нужны.
 
-**Fly.io** (конфиг готов):
+### Fly.io
+
+Конфиг — корневой `fly.toml` (`app = "stopkran"`, регион `fra`), запускать из корня:
+
 ```bash
-cd backend
-fly launch --no-deploy
-fly secrets import < .env       # DATABASE_URL, TELEGRAM_BOT_TOKEN, ...
 fly deploy
+# если сборщик Depot недоступен:
+fly deploy --remote-only --depot=false
 ```
+
+Секреты (`.env` целиком импортировать нельзя — в нём локальный `DATABASE_URL`):
+
+```bash
+fly secrets set \
+  TELEGRAM_BOT_TOKEN=... \
+  TELEGRAM_WEBHOOK_SECRET=...
+```
+
+Токен содержит `:` — надёжнее импортировать из файла `KEY=value` построчно
+(`fly secrets import -a stopkran < secrets.txt`), иначе оболочка может испортить значение.
+
+> Текущий токен `@stopkran_test_bot` засвечен в переписке: перевыпустите его
+> (`@BotFather` → `/revoke`), затем `fly secrets set TELEGRAM_BOT_TOKEN=...`
+> и заново `set_webhook`.
+
+`DATABASE_URL` подставляет `fly postgres attach` (как secret), `DB_SSL=false` и остальные
+прод-значения — в `fly.toml`. Postgres на Fly — отдельное приложение в сети организации:
+
+```bash
+fly postgres create --name stopkran-db --region fra --vm-size shared-cpu-1x --volume-size 1
+fly postgres attach stopkran-db -a stopkran --database-name stopkran
+```
+
+Схему накатываем после деплоя (в контейнере есть `app.init_db`):
+
+```bash
+fly ssh console -a stopkran -C "python -m app.init_db"
+```
+
+Вебхук — публичный HTTPS-адрес **API** (не фронтенда):
+
+```bash
+fly ssh console -a stopkran -C "python -m app.set_webhook https://stopkran.fly.dev"
+```
+
+Проверка: `https://stopkran.fly.dev/api/health`, фронтенд — `https://stopkran.fly.dev/mini/`
+(этот же адрес — в BotFather → Menu Button и в `MINI_APP_URL`).
 
 **Google Cloud Run:**
 ```bash
